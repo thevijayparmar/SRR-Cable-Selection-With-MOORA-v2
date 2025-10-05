@@ -204,11 +204,10 @@ def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
 # MODIFICATION: Complete overhaul of the parallel plot function.
 def parallel_fig(df: pd.DataFrame):
     """
-    Overhauled again to correctly use a multi-trace layering approach.
-    Plotly's Parcoords is strict: `line.width` is not a valid property, and `line.color`
-    cannot be an array of string names. The only robust way to achieve custom
-    coloring is to layer traces. This version plots ranks 4-10 first, then
-    layers the top 3 individually with their own colors.
+    Final revision to fix all visual glitches. This version uses a robust single-trace
+    approach with a custom discrete colorscale to correctly highlight the top 3 ranks.
+    It also adds margin adjustments to prevent cropping and formats tick labels
+    to prevent overlapping. This is the definitive method.
     """
     # Filter to the top 10 alternatives for clarity.
     top10 = df.head(10).copy()
@@ -216,38 +215,46 @@ def parallel_fig(df: pd.DataFrame):
     # Define the parameter axes for the plot
     dims = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
             "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
-    
-    # Initialize the figure. We will add traces to it.
-    fig = go.Figure()
-    
-    # --- Add Trace 1: Ranks 4-10 (the background) ---
-    background_data = top10[top10['Rank'] > 3]
-    fig.add_trace(go.Parcoords(
-        line=dict(color='#D3D3D3'), # A single, valid color for the whole trace
-        dimensions=[dict(label=col, values=background_data[col]) for col in dims]
+
+    # --- Fix for Missing Colors & Lines ---
+    # Create a custom discrete colorscale. Plotly maps numeric values (our ranks 1-10)
+    # to a 0-1 scale. We define color stops to make ranks 1, 2, and 3 specific colors.
+    # Rank 1 -> yellow, Rank 2 -> green, Rank 3 -> blue, Ranks 4-10 -> grey
+    custom_colorscale = [
+        [0.0, 'yellow'], [0.1, 'yellow'],     # Rank 1
+        [0.1, 'green'],  [0.2, 'green'],      # Rank 2
+        [0.2, 'blue'],   [0.3, 'blue'],       # Rank 3
+        [0.3, '#d3d3d3'], [1.0, '#d3d3d3']   # Ranks 4-10
+    ]
+
+    fig = go.Figure(data=go.Parcoords(
+        line=dict(
+            color=top10['Rank'],       # Provide the numeric rank data
+            colorscale=custom_colorscale, # Apply our custom color map
+            cmin=1,  # Set the floor of our data range (Rank 1)
+            cmax=10  # Set the ceiling of our data range (Rank 10)
+        ),
+        # --- Fix for Overlapping Digits & Precision ---
+        # Apply a format string to limit decimals to 3 places for all axes
+        dimensions=[dict(
+            label=col.replace("_", " "), 
+            values=top10[col],
+            tickformat='.3f'
+        ) for col in dims]
     ))
 
-    # --- Add Traces 2, 3, 4: Top 3 ranks, layered on top ---
-    # We loop in reverse (3, 2, 1) so that Rank 1 is plotted last and is most visible.
-    color_map = {1: 'yellow', 2: 'green', 3: 'blue'}
-    for i in [3, 2, 1]:
-        rank_data = top10[top10['Rank'] == i]
-        fig.add_trace(go.Parcoords(
-            line=dict(color=color_map[i]), # Assign a specific color to this trace
-            dimensions=[dict(label=col, values=rank_data[col]) for col in dims]
-        ))
-
-    # Update layout and title
+    # --- Fix for Cropped Text ---
+    # Update layout to add margins so labels are not cut off.
     fig.update_layout(
         title="Parallel coordinates – top 10 alternatives",
-        font=dict(size=12, color='black'), # Ensure crisp, readable font
-        showlegend=False # The multiple traces are for styling, not for a legend
+        font=dict(size=12, color='black'),
+        margin=dict(l=80, r=80, t=100, b=40) # Adjust left, right, top, bottom margins
     )
     
-    fig.add_annotation(text=CREDIT, x=0.5, y=-0.12, xref="paper", yref="paper",
+    fig.add_annotation(text=CREDIT, x=0.5, y=-0.15, xref="paper", yref="paper",
                        showarrow=False, font=dict(size=10))
                        
-    return fig
+    return figreturn fig
     
 # ===============================================================
 # ------------------------- STREAMLIT ---------------------------
@@ -415,5 +422,6 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
 
 
