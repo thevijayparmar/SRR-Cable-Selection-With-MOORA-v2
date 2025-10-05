@@ -251,10 +251,10 @@ def parallel_fig(df: pd.DataFrame):
         margin=dict(l=80, r=80, t=100, b=40) # Adjust left, right, top, bottom margins
     )
     
-    fig.add_annotation(text=CREDIT, x=0.5, y=-0.15, xref="paper", yref="paper",
+fig.add_annotation(text=CREDIT, x=0.5, y=-0.15, xref="paper", yref="paper",
                        showarrow=False, font=dict(size=10))
                        
-    return figreturn fig
+    return fig # This should be the last line
     
 # ===============================================================
 # ------------------------- STREAMLIT ---------------------------
@@ -422,6 +422,7 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
 
 
 
