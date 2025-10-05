@@ -216,26 +216,24 @@ def parallel_fig(df: pd.DataFrame):
     dims = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
             "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
 
-    # --- Fix for Missing Colors & Lines ---
     # Create a custom discrete colorscale. Plotly maps numeric values (our ranks 1-10)
     # to a 0-1 scale. We define color stops to make ranks 1, 2, and 3 specific colors.
     # Rank 1 -> yellow, Rank 2 -> green, Rank 3 -> blue, Ranks 4-10 -> grey
     custom_colorscale = [
-        [0.0, 'yellow'], [0.1, 'yellow'],     # Rank 1
-        [0.1, 'green'],  [0.2, 'green'],      # Rank 2
-        [0.2, 'blue'],   [0.3, 'blue'],       # Rank 3
-        [0.3, '#d3d3d3'], [1.0, '#d3d3d3']   # Ranks 4-10
+        [0.0, 'yellow'], [0.1, 'yellow'],     # Corresponds to Rank 1
+        [0.1, 'green'],  [0.2, 'green'],      # Corresponds to Rank 2
+        [0.2, 'blue'],   [0.3, 'blue'],       # Corresponds to Rank 3
+        [0.3, '#d3d3d3'], [1.0, '#d3d3d3']   # Corresponds to Ranks 4-10
     ]
 
     fig = go.Figure(data=go.Parcoords(
         line=dict(
-            color=top10['Rank'],       # Provide the numeric rank data
+            color=top10['Rank'],          # Provide the numeric rank data for coloring
             colorscale=custom_colorscale, # Apply our custom color map
-            cmin=1,  # Set the floor of our data range (Rank 1)
-            cmax=10  # Set the ceiling of our data range (Rank 10)
+            cmin=1,                       # Set the floor of our data range (Rank 1)
+            cmax=10                       # Set the ceiling of our data range (Rank 10)
         ),
-        # --- Fix for Overlapping Digits & Precision ---
-        # Apply a format string to limit decimals to 3 places for all axes
+        # Apply a format string to limit decimals and make labels readable
         dimensions=[dict(
             label=col.replace("_", " "), 
             values=top10[col],
@@ -243,7 +241,6 @@ def parallel_fig(df: pd.DataFrame):
         ) for col in dims]
     ))
 
-    # --- Fix for Cropped Text ---
     # Update layout to add margins so labels are not cut off.
     fig.update_layout(
         title="Parallel coordinates – top 10 alternatives",
@@ -251,10 +248,8 @@ def parallel_fig(df: pd.DataFrame):
         margin=dict(l=80, r=80, t=100, b=40) # Adjust left, right, top, bottom margins
     )
     
-fig.add_annotation(text=CREDIT, x=0.5, y=-0.15, xref="paper", yref="paper",
-                       showarrow=False, font=dict(size=10))
-                       
-    return fig # This should be the last line
+    fig.add_annotation(text=CREDIT, x=0.5, y=-0.15, xref="paper", yref="paper",
+                       showarrow=False, font
     
 # ===============================================================
 # ------------------------- STREAMLIT ---------------------------
@@ -422,6 +417,7 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
 
 
 
