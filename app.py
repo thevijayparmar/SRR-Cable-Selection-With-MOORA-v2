@@ -204,10 +204,11 @@ def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
 # MODIFICATION: Complete overhaul of the parallel plot function.
 def parallel_fig(df: pd.DataFrame):
     """
-    Overhauled to use plotly.graph_objects for fine-grained line control.
-    The previous multi-trace approach was unstable. The robust solution is to use a
-    single Parcoords trace and provide style arrays for 'color' and 'width'.
-    This properly highlights the top candidates without fighting the library.
+    Overhauled again to correctly use a multi-trace layering approach.
+    Plotly's Parcoords is strict: `line.width` is not a valid property, and `line.color`
+    cannot be an array of string names. The only robust way to achieve custom
+    coloring is to layer traces. This version plots ranks 4-10 first, then
+    layers the top 3 individually with their own colors.
     """
     # Filter to the top 10 alternatives for clarity.
     top10 = df.head(10).copy()
@@ -215,39 +216,39 @@ def parallel_fig(df: pd.DataFrame):
     # Define the parameter axes for the plot
     dims = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
             "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
-
-    # --- Highlighting Logic: Create style arrays for a single trace ---
-    # A much more robust method: one trace, many styles.
     
-    # Create a color mapping for the top 3 ranks, with a default for others.
-    color_map = {1: 'yellow', 2: 'green', 3: 'blue'}
-    colors = [color_map.get(rank, '#D3D3D3') for rank in top10['Rank']]
+    # Initialize the figure. We will add traces to it.
+    fig = go.Figure()
     
-    # Create a width mapping: bold for the top 3, thin for the rest.
-    widths = [4 if rank <= 3 else 1 for rank in top10['Rank']]
-
-    # Create the figure with a SINGLE Parcoords trace
-    fig = go.Figure(data=go.Parcoords(
-        line=dict(
-            color=colors,  # Apply the list of colors for each line
-            width=widths   # Apply the list of widths for each line
-        ),
-        dimensions=[dict(label=col, values=top10[col]) for col in dims]
+    # --- Add Trace 1: Ranks 4-10 (the background) ---
+    background_data = top10[top10['Rank'] > 3]
+    fig.add_trace(go.Parcoords(
+        line=dict(color='#D3D3D3'), # A single, valid color for the whole trace
+        dimensions=[dict(label=col, values=background_data[col]) for col in dims]
     ))
+
+    # --- Add Traces 2, 3, 4: Top 3 ranks, layered on top ---
+    # We loop in reverse (3, 2, 1) so that Rank 1 is plotted last and is most visible.
+    color_map = {1: 'yellow', 2: 'green', 3: 'blue'}
+    for i in [3, 2, 1]:
+        rank_data = top10[top10['Rank'] == i]
+        fig.add_trace(go.Parcoords(
+            line=dict(color=color_map[i]), # Assign a specific color to this trace
+            dimensions=[dict(label=col, values=rank_data[col]) for col in dims]
+        ))
 
     # Update layout and title
     fig.update_layout(
         title="Parallel coordinates – top 10 alternatives",
         font=dict(size=12, color='black'), # Ensure crisp, readable font
-        showlegend=False
+        showlegend=False # The multiple traces are for styling, not for a legend
     )
     
     fig.add_annotation(text=CREDIT, x=0.5, y=-0.12, xref="paper", yref="paper",
                        showarrow=False, font=dict(size=10))
                        
     return fig
-
-
+    
 # ===============================================================
 # ------------------------- STREAMLIT ---------------------------
 # ===============================================================
@@ -414,4 +415,5 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
 
