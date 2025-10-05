@@ -249,8 +249,9 @@ def parallel_fig(df: pd.DataFrame):
     )
     
     fig.add_annotation(text=CREDIT, x=0.5, y=-0.15, xref="paper", yref="paper",
-                       showarrow=False, font
-    
+                       showarrow=False, font=dict(size=10))
+                       
+    return fig
 # ===============================================================
 # ------------------------- STREAMLIT ---------------------------
 # ===============================================================
@@ -417,6 +418,7 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
 
 
 
