@@ -18,6 +18,7 @@ from matplotlib.figure import Figure
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.interpolate import griddata
 import plotly.express as px
+import plotly.graph_objects as go # Added for more granular plot control
 import streamlit as st
 
 # ---------------------------------------------------------------
@@ -153,17 +154,32 @@ def moora_rank(df: pd.DataFrame, cfg_map: Dict[str, CriterionConfig]) -> pd.Data
 # ===============================================================
 # ----------------------  Plot helpers  -------------------------
 # ===============================================================
-def cable_profile_fig(span, sag) -> Figure:
-    x=np.linspace(0,span,200)
-    y=-4*sag*(x/span)*(1-x/span)
-    fig=Figure(figsize=(6,3))
-    ax=fig.add_subplot(111)
-    ax.plot(x,y,color="tab:blue")
+def cable_profile_fig(span: float, sag: float, equal_scale: bool = False) -> Figure:
+    """
+    Generates the cable profile plot.
+    A cable under UDL hangs in a perfect parabola. It's the platonic ideal
+    of structural forms - pure, simple, ruthlessly efficient.
+    """
+    x = np.linspace(0, span, 200)
+    y = -4 * sag * (x / span) * (1 - x / span)
+    fig = Figure(figsize=(6, 3))
+    ax = fig.add_subplot(111)
+
+    # MODIFICATION: Remove whitespace padding for a tighter plot.
+    ax.margins(0)
+    
+    ax.plot(x, y, color="tab:blue")
     ax.set_xlabel("Span position (m)")
     ax.set_ylabel("Elevation (m, downward)")
     ax.set_title("Cable elevation profile")
-    ax.grid(alpha=.3,ls="--")
-    fig.text(.5,-.12,CREDIT,ha="center",fontsize=8)
+    ax.grid(alpha=.3, ls="--")
+
+    # MODIFICATION: Optional equal scaling for X and Y axes.
+    # Sometimes, a true-to-scale view is enlightening. Other times, it's just flat.
+    if equal_scale:
+        ax.set_aspect('equal', adjustable='box')
+
+    fig.text(.5, -.12, CREDIT, ha="center", fontsize=8)
     return fig
 
 def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
@@ -185,15 +201,50 @@ def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
     return fig
 
 def parallel_fig(df: pd.DataFrame):
-    top=df.head(50)
-    fig=px.parallel_coordinates(
-        top, dimensions=["Cable_Dia_mm","Utilisation","N_Cables","NatFreq_Hz",
-                         "Sag_m","Tension_kN","CableMass_kg","MOORA_Score"],
-        color="MOORA_Score", color_continuous_scale=px.colors.sequential.Viridis,
-        title="Parallel coordinates – top 50 alternatives")
-    fig.add_annotation(text=CREDIT,x=.5,y=-.12,xref="paper",yref="paper",
-                       showarrow=False,font=dict(size=10))
-    fig.update_layout(font=dict(size=11))
+    """
+    Generates a parallel coordinates plot for the top alternatives.
+    This plot is our window into the high-dimensional chaos of the design space.
+    We're trying to tame it by highlighting the champions (top 3)
+    while the others fade into a ghostly Greek chorus.
+    """
+    # MODIFICATION: Filter to only the top 10 alternatives for clarity.
+    top10 = df.head(10).copy()
+
+    dimensions = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
+                  "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
+    
+    # MODIFICATION: Rebuilt from the ground up using go.Figure for layering control.
+    # TODO: Maybe add a toggle for which dimensions to show? Could get busy.
+    fig = go.Figure()
+
+    # Plot ranks 4-10 first as a muted background.
+    df_others = top10[top10['Rank'] > 3]
+    if not df_others.empty:
+        fig.add_trace(go.Parcoords(
+            line=dict(color='#D3D3D3', width=1), # Thin grey lines for the runners-up.
+            dimensions=[dict(range=[top10[col].min(), top10[col].max()],
+                             label=col, values=df_others[col]) for col in dimensions]
+        ))
+
+    # Layer the top 3 ranks on top with distinct, bold colors. A visual hierarchy to celebrate the victors.
+    colors = {1: 'yellow', 2: 'green', 3: 'blue'}
+    for rank in sorted(colors.keys(), reverse=True): # Plot 3, then 2, then 1, so rank 1 is on top
+        df_rank = top10[top10['Rank'] == rank]
+        if not df_rank.empty:
+            fig.add_trace(go.Parcoords(
+                line=dict(color=colors[rank], width=4), # Bold lines for the winners.
+                dimensions=[dict(range=[top10[col].min(), top10[col].max()],
+                                 label=col, values=df_rank[col]) for col in dimensions]
+            ))
+
+    # MODIFICATION: Update layout with new title and font size.
+    fig.update_layout(
+        title="Parallel coordinates – top 10 alternatives",
+        font=dict(size=12)
+    )
+    
+    fig.add_annotation(text=CREDIT, x=.5, y=-.12, xref="paper", yref="paper",
+                       showarrow=False, font=dict(size=10))
     return fig
 
 # ===============================================================
@@ -315,10 +366,10 @@ if st.session_state.get("results_ready"):
         title+=f" for **{st.session_state.bridge_id}**"
     st.markdown(
         f"{title}  \n"
-        f"* Diameter : **{best.Cable_Dia_mm:.1f} mm**  \n"
-        f"* Cables  : **{int(best.N_Cables)}**  \n"
-        f"* Utilisation : **{best.Utilisation:.2f}**  \n"
-        f"* MOORA score : **{best.MOORA_Score:.3f}**  \n\n"
+        f"* Diameter : **{best.Cable_Dia_mm:.1f} mm** \n"
+        f"* Cables  : **{int(best.N_Cables)}** \n"
+        f"* Utilisation : **{best.Utilisation:.2f}** \n"
+        f"* MOORA score : **{best.MOORA_Score:.3f}** \n\n"
         f"**{CREDIT}**"
     )
     st.table(pd.DataFrame({
@@ -332,7 +383,8 @@ if st.session_state.get("results_ready"):
     tab1,tab2,tab3=st.tabs(["Cable profile & contour","Parallel plot","Full table"])
 
     with tab1:
-        st.pyplot(cable_profile_fig(st.session_state.span,best.Sag_m))
+        # MODIFICATION: Updated function call to include the new 'equal_scale' parameter.
+        st.pyplot(cable_profile_fig(st.session_state.span, best.Sag_m, equal_scale=False))
         vars=["Utilisation","Cable_Dia_mm","N_Cables","NatFreq_Hz",
               "Sag_m","Tension_kN","CableMass_kg"]
         c1,c2,_=st.columns([3,3,1])
