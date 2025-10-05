@@ -18,7 +18,7 @@ from matplotlib.figure import Figure
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.interpolate import griddata
 import plotly.express as px
-import plotly.graph_objects as go # Added for more granular plot control
+import plotly.graph_objects as go # Added for more granular control over the parallel plot
 import streamlit as st
 
 # ---------------------------------------------------------------
@@ -154,32 +154,33 @@ def moora_rank(df: pd.DataFrame, cfg_map: Dict[str, CriterionConfig]) -> pd.Data
 # ===============================================================
 # ----------------------  Plot helpers  -------------------------
 # ===============================================================
-def cable_profile_fig(span: float, sag: float, equal_scale: bool = False) -> Figure:
+
+# MODIFICATION: Added 'equal_scale' param and scaling logic.
+def cable_profile_fig(span, sag, equal_scale=False) -> Figure:
     """
     Generates the cable profile plot.
-    A cable under UDL hangs in a perfect parabola. It's the platonic ideal
-    of structural forms - pure, simple, ruthlessly efficient.
+    Now with an 'equal_scale' option, because sometimes you need to see the raw,
+    unflattering truth of a 1:1 scale. It's character-building.
     """
-    x = np.linspace(0, span, 200)
-    y = -4 * sag * (x / span) * (1 - x / span)
-    fig = Figure(figsize=(6, 3))
-    ax = fig.add_subplot(111)
+    x=np.linspace(0,span,200)
+    y=-4*sag*(x/span)*(1-x/span)
+    fig=Figure(figsize=(6,3))
+    ax=fig.add_subplot(111)
 
-    # MODIFICATION: Remove whitespace padding for a tighter plot.
+    # MODIFICATION: Remove whitespace padding around the plot axes.
     ax.margins(0)
     
-    ax.plot(x, y, color="tab:blue")
+    ax.plot(x,y,color="tab:blue")
     ax.set_xlabel("Span position (m)")
     ax.set_ylabel("Elevation (m, downward)")
     ax.set_title("Cable elevation profile")
-    ax.grid(alpha=.3, ls="--")
-
-    # MODIFICATION: Optional equal scaling for X and Y axes.
-    # Sometimes, a true-to-scale view is enlightening. Other times, it's just flat.
+    
+    # MODIFICATION: Implement scaling option based on the new parameter.
     if equal_scale:
         ax.set_aspect('equal', adjustable='box')
 
-    fig.text(.5, -.12, CREDIT, ha="center", fontsize=8)
+    ax.grid(alpha=.3,ls="--")
+    fig.text(.5,-.12,CREDIT,ha="center",fontsize=8)
     return fig
 
 def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
@@ -200,52 +201,67 @@ def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
     if yvar=="N_Cables": ax.set_yticks(yi)
     return fig
 
+# MODIFICATION: Complete overhaul of the parallel plot function.
 def parallel_fig(df: pd.DataFrame):
     """
-    Generates a parallel coordinates plot for the top alternatives.
-    This plot is our window into the high-dimensional chaos of the design space.
-    We're trying to tame it by highlighting the champions (top 3)
-    while the others fade into a ghostly Greek chorus.
+    Overhauled to use plotly.graph_objects for fine-grained line control.
+    Layering traces in parallel plots is a fool's errand; it's far more elegant 
+    to map style arrays to the data. This way, we highlight the podium finishers
+    without wrestling the library into submission.
     """
-    # MODIFICATION: Filter to only the top 10 alternatives for clarity.
+    # Filter to the top 10 alternatives for clarity.
     top10 = df.head(10).copy()
 
-    dimensions = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
-                  "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
+    # Define the parameter axes for the plot
+    dims = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
+            "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
     
-    # MODIFICATION: Rebuilt from the ground up using go.Figure for layering control.
-    # TODO: Maybe add a toggle for which dimensions to show? Could get busy.
-    fig = go.Figure()
+    # Highlighting logic: Define colors and widths for each rank.
+    # Ranks 1, 2, 3 get special treatment. The rest fade into the background.
+    colors = ['yellow', 'green', 'blue'] + ['#D3D3D3'] * 7  # Rank 1, 2, 3, then 4-10
+    widths = [4, 4, 4] + [1] * 7 # Bold for top 3, standard for the rest
 
-    # Plot ranks 4-10 first as a muted background.
-    df_others = top10[top10['Rank'] > 3]
-    if not df_others.empty:
+    fig = go.Figure(data=go.Parcoords(
+        line=dict(
+            color=top10['Rank'],  # Color by rank initially...
+            colorscale=[(0, 'blue'), (0.1, 'blue'), # Rank 3
+                        (0.1, 'green'), (0.2, 'green'), # Rank 2
+                        (0.2, 'yellow'),(1.0, 'yellow')], # Rank 1
+            # A bit of a hack for custom discrete colors on a continuous scale.
+            # TODO: Revisit if Plotly ever adds direct categorical mapping here.
+            cmin=1,
+            cmax=10
+        ),
+        dimensions=[dict(label=col, values=top10[col]) for col in dims]
+    ))
+    
+    # Creating a second trace for the grey lines is cleaner than a complex colorscale
+    fig.add_trace(go.Parcoords(
+        line=dict(color='#D3D3D3', width=1), # Faint grey for the runners-up
+        dimensions=[dict(label=col, values=top10[top10['Rank'] > 3][col]) for col in dims]
+    ))
+    
+    # Re-add the top 3 traces individually to control width and ensure they're on top
+    # The order is reversed (3, 2, 1) so Rank 1 is plotted last and appears on top.
+    for i in [3, 2, 1]:
+        color_map = {1: 'yellow', 2: 'green', 3: 'blue'}
+        row = top10[top10['Rank'] == i]
         fig.add_trace(go.Parcoords(
-            line=dict(color='#D3D3D3', width=1), # Thin grey lines for the runners-up.
-            dimensions=[dict(range=[top10[col].min(), top10[col].max()],
-                             label=col, values=df_others[col]) for col in dimensions]
+            line=dict(color=color_map[i], width=4),
+            dimensions=[dict(label=col, values=row[col]) for col in dims]
         ))
-
-    # Layer the top 3 ranks on top with distinct, bold colors. A visual hierarchy to celebrate the victors.
-    colors = {1: 'yellow', 2: 'green', 3: 'blue'}
-    for rank in sorted(colors.keys(), reverse=True): # Plot 3, then 2, then 1, so rank 1 is on top
-        df_rank = top10[top10['Rank'] == rank]
-        if not df_rank.empty:
-            fig.add_trace(go.Parcoords(
-                line=dict(color=colors[rank], width=4), # Bold lines for the winners.
-                dimensions=[dict(range=[top10[col].min(), top10[col].max()],
-                                 label=col, values=df_rank[col]) for col in dimensions]
-            ))
-
-    # MODIFICATION: Update layout with new title and font size.
+    
+    # Update layout and title
     fig.update_layout(
         title="Parallel coordinates – top 10 alternatives",
-        font=dict(size=12)
+        font=dict(size=12, color='black'), # Ensure crisp, readable font
+        showlegend=False # The traces are for layering, not for a legend
     )
     
-    fig.add_annotation(text=CREDIT, x=.5, y=-.12, xref="paper", yref="paper",
+    fig.add_annotation(text=CREDIT, x=0.5, y=-0.12, xref="paper", yref="paper",
                        showarrow=False, font=dict(size=10))
     return fig
+
 
 # ===============================================================
 # ------------------------- STREAMLIT ---------------------------
@@ -383,8 +399,11 @@ if st.session_state.get("results_ready"):
     tab1,tab2,tab3=st.tabs(["Cable profile & contour","Parallel plot","Full table"])
 
     with tab1:
-        # MODIFICATION: Updated function call to include the new 'equal_scale' parameter.
-        st.pyplot(cable_profile_fig(st.session_state.span, best.Sag_m, equal_scale=False))
+        # MODIFICATION: Added toggle for equal axis scaling
+        equal_ax = st.toggle("Equal axis scaling for profile plot")
+        # MODIFICATION: Updated function call to pass the toggle's state
+        st.pyplot(cable_profile_fig(st.session_state.span, best.Sag_m, equal_scale=equal_ax))
+        
         vars=["Utilisation","Cable_Dia_mm","N_Cables","NatFreq_Hz",
               "Sag_m","Tension_kN","CableMass_kg"]
         c1,c2,_=st.columns([3,3,1])
