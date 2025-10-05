@@ -205,9 +205,9 @@ def contour_fig(df: pd.DataFrame, xvar:str, yvar:str) -> Figure:
 def parallel_fig(df: pd.DataFrame):
     """
     Overhauled to use plotly.graph_objects for fine-grained line control.
-    Layering traces in parallel plots is a fool's errand; it's far more elegant 
-    to map style arrays to the data. This way, we highlight the podium finishers
-    without wrestling the library into submission.
+    The previous multi-trace approach was unstable. The robust solution is to use a
+    single Parcoords trace and provide style arrays for 'color' and 'width'.
+    This properly highlights the top candidates without fighting the library.
     """
     # Filter to the top 10 alternatives for clarity.
     top10 = df.head(10).copy()
@@ -215,51 +215,36 @@ def parallel_fig(df: pd.DataFrame):
     # Define the parameter axes for the plot
     dims = ["Cable_Dia_mm", "Utilisation", "N_Cables", "NatFreq_Hz",
             "Sag_m", "Tension_kN", "CableMass_kg", "MOORA_Score"]
-    
-    # Highlighting logic: Define colors and widths for each rank.
-    # Ranks 1, 2, 3 get special treatment. The rest fade into the background.
-    colors = ['yellow', 'green', 'blue'] + ['#D3D3D3'] * 7  # Rank 1, 2, 3, then 4-10
-    widths = [4, 4, 4] + [1] * 7 # Bold for top 3, standard for the rest
 
+    # --- Highlighting Logic: Create style arrays for a single trace ---
+    # A much more robust method: one trace, many styles.
+    
+    # Create a color mapping for the top 3 ranks, with a default for others.
+    color_map = {1: 'yellow', 2: 'green', 3: 'blue'}
+    colors = [color_map.get(rank, '#D3D3D3') for rank in top10['Rank']]
+    
+    # Create a width mapping: bold for the top 3, thin for the rest.
+    widths = [4 if rank <= 3 else 1 for rank in top10['Rank']]
+
+    # Create the figure with a SINGLE Parcoords trace
     fig = go.Figure(data=go.Parcoords(
         line=dict(
-            color=top10['Rank'],  # Color by rank initially...
-            colorscale=[(0, 'blue'), (0.1, 'blue'), # Rank 3
-                        (0.1, 'green'), (0.2, 'green'), # Rank 2
-                        (0.2, 'yellow'),(1.0, 'yellow')], # Rank 1
-            # A bit of a hack for custom discrete colors on a continuous scale.
-            # TODO: Revisit if Plotly ever adds direct categorical mapping here.
-            cmin=1,
-            cmax=10
+            color=colors,  # Apply the list of colors for each line
+            width=widths   # Apply the list of widths for each line
         ),
         dimensions=[dict(label=col, values=top10[col]) for col in dims]
     ))
-    
-    # Creating a second trace for the grey lines is cleaner than a complex colorscale
-    fig.add_trace(go.Parcoords(
-        line=dict(color='#D3D3D3', width=1), # Faint grey for the runners-up
-        dimensions=[dict(label=col, values=top10[top10['Rank'] > 3][col]) for col in dims]
-    ))
-    
-    # Re-add the top 3 traces individually to control width and ensure they're on top
-    # The order is reversed (3, 2, 1) so Rank 1 is plotted last and appears on top.
-    for i in [3, 2, 1]:
-        color_map = {1: 'yellow', 2: 'green', 3: 'blue'}
-        row = top10[top10['Rank'] == i]
-        fig.add_trace(go.Parcoords(
-            line=dict(color=color_map[i], width=4),
-            dimensions=[dict(label=col, values=row[col]) for col in dims]
-        ))
-    
+
     # Update layout and title
     fig.update_layout(
         title="Parallel coordinates – top 10 alternatives",
         font=dict(size=12, color='black'), # Ensure crisp, readable font
-        showlegend=False # The traces are for layering, not for a legend
+        showlegend=False
     )
     
     fig.add_annotation(text=CREDIT, x=0.5, y=-0.12, xref="paper", yref="paper",
                        showarrow=False, font=dict(size=10))
+                       
     return fig
 
 
@@ -429,3 +414,4 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
