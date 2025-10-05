@@ -4,7 +4,7 @@
 #  • Dual input (Manual / CSV)
 #  • CSV-driven MOORA settings
 # ----------------------------------------------------------------
-#  Authors : Vijaykumar Parmar & Dr. K. B. Parikh   (© 2025)
+#  Authors : Hidden for Double Blinded Review
 # ================================================================
 
 import math, os
@@ -22,7 +22,7 @@ import plotly.graph_objects as go # Added for more granular control over the par
 import streamlit as st
 
 # ---------------------------------------------------------------
-CREDIT = "Authors : Vijaykumar Parmar & Dr. K. B. Parikh"
+CREDIT = "Authors : Hidden for Double Blinded Review"
 
 # ---------------- MOORA-criterion dataclass --------------------
 @dataclass
@@ -418,6 +418,7 @@ if st.session_state.get("results_ready"):
                            file_name="srb_results.csv",mime="text/csv")
 else:
     st.info("Set parameters (manual or CSV) and click **Run analysis**.")
+
 
 
 
